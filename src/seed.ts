@@ -517,7 +517,44 @@ async function seedHistoricalReservations() {
     },
   ];
 
-  const allData = [...reservations, ...todayBookings].map((r) => ({
+  const yesterdayBookings: Array<{
+    museumId: number;
+    visitorName: string;
+    phone: string;
+    visitDate: string;
+    timeSlot: string;
+    passType: string;
+    groupSize: number;
+    status: string;
+    createdAt?: Date;
+    verifiedAt?: Date | null;
+    cancelledAt?: Date | null;
+  }> = [
+    {
+      museumId: museums[0].id,
+      visitorName: "李伟",
+      phone: "13800002222",
+      visitDate: daysAgo(1),
+      timeSlot: "am",
+      passType: "single",
+      groupSize: 1,
+      status: "booked",
+      createdAt: hoursAgo(24 + 20),
+    },
+    {
+      museumId: museums[0].id,
+      visitorName: "孙丽",
+      phone: "13800007777",
+      visitDate: daysAgo(1),
+      timeSlot: "pm",
+      passType: "single",
+      groupSize: 2,
+      status: "booked",
+      createdAt: hoursAgo(24 + 20),
+    },
+  ];
+
+  const allData = [...reservations, ...todayBookings, ...yesterdayBookings].map((r) => ({
     museumId: r.museumId,
     visitorName: r.visitorName,
     phone: r.phone,
