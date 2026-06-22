@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { authMiddleware } from "../auth";
 import { prisma } from "../prisma";
+import { checkBookingEligibility } from "../credit/service";
 
 const router = Router();
 router.use(authMiddleware);
@@ -14,16 +15,19 @@ const createSchema = z.object({
   visitDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式应为 YYYY-MM-DD"),
   timeSlot: z.enum(["am", "pm"]),
   passType: z.enum(["single", "annual"]).optional().default("single"),
+  groupSize: z.number().int().min(1).optional().default(1),
 });
 
 const statusSchema = z.object({
-  status: z.enum(["booked", "visited", "cancelled"]),
+  status: z.enum(["booked", "visited", "cancelled", "no_show", "appealed"]),
 });
 
 router.get("/", async (req, res) => {
   const where: Record<string, unknown> = {};
   if (req.query.museumId) where.museumId = Number(req.query.museumId);
   if (req.query.date) where.visitDate = String(req.query.date);
+  if (req.query.phone) where.phone = String(req.query.phone);
+  if (req.query.status) where.status = String(req.query.status);
   const list = await prisma.reservation.findMany({
     where,
     orderBy: { id: "desc" },
@@ -39,7 +43,12 @@ router.get("/", async (req, res) => {
       visit_date: r.visitDate,
       time_slot: r.timeSlot,
       pass_type: r.passType,
+      group_size: r.groupSize,
       status: r.status,
+      cancelled_at: r.cancelledAt,
+      verified_at: r.verifiedAt,
+      no_show_batch_id: r.noShowBatchId,
+      appeal_id: r.appealId,
     })),
   );
 });
@@ -60,7 +69,21 @@ router.post("/", async (req, res) => {
     return res.status(422).json({ detail: "该场馆当前不可预约" });
   }
 
-  // 容量校验：当天该场馆有效预约（非取消）不得超过每日上限
+  if (data.phone) {
+    const check = await checkBookingEligibility(
+      data.phone,
+      data.visitDate,
+      data.timeSlot,
+      data.groupSize,
+    );
+    if (!check.allowed) {
+      return res.status(403).json({
+        detail: check.reason || "预约被拒绝",
+        credit_check: check,
+      });
+    }
+  }
+
   const used = await prisma.reservation.count({
     where: {
       museumId: data.museumId,
@@ -80,6 +103,7 @@ router.post("/", async (req, res) => {
     visit_date: created.visitDate,
     time_slot: created.timeSlot,
     pass_type: created.passType,
+    group_size: created.groupSize,
     status: created.status,
   });
 });

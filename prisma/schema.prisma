@@ -34,19 +34,183 @@ model Museum {
 }
 
 model Reservation {
-  id          Int      @id @default(autoincrement())
-  museumId    Int      @map("museum_id")
-  visitorName String   @map("visitor_name") @db.VarChar(64)
-  phone       String   @default("") @db.VarChar(32)
-  visitDate   String   @map("visit_date") @db.VarChar(10) // YYYY-MM-DD
-  timeSlot    String   @map("time_slot") @db.VarChar(16) // am / pm
-  passType    String   @map("pass_type") @db.VarChar(32) // single / annual
-  // 状态：booked 已预约 / visited 已参观 / cancelled 已取消
-  status      String   @default("booked") @db.VarChar(16)
-  createdAt   DateTime @default(now()) @map("created_at")
+  id             Int       @id @default(autoincrement())
+  museumId       Int       @map("museum_id")
+  visitorName    String    @map("visitor_name") @db.VarChar(64)
+  phone          String    @default("") @db.VarChar(32)
+  visitDate      String    @map("visit_date") @db.VarChar(10)
+  timeSlot       String    @map("time_slot") @db.VarChar(16)
+  passType       String    @map("pass_type") @db.VarChar(32)
+  groupSize      Int       @default(1) @map("group_size")
+  status         String    @default("booked") @db.VarChar(16)
+  verifiedAt     DateTime? @map("verified_at")
+  cancelledAt    DateTime? @map("cancelled_at")
+  noShowBatchId  Int?      @map("no_show_batch_id")
+  appealId       Int?      @map("appeal_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
-  museum Museum @relation(fields: [museumId], references: [id], onDelete: Cascade)
+  museum         Museum          @relation(fields: [museumId], references: [id], onDelete: Cascade)
+  noShowBatch    NoShowBatch?    @relation(fields: [noShowBatchId], references: [id])
+  creditAppeals  CreditAppeal[]  @relation("ReservationAppeals")
+
+  creditLogs     CreditLog[]
 
   @@index([museumId, visitDate])
+  @@index([phone])
+  @@index([status])
   @@map("reservations")
+}
+
+model CreditAccount {
+  id               Int              @id @default(autoincrement())
+  phone            String           @unique @db.VarChar(32)
+  visitorName      String           @default("") @map("visitor_name") @db.VarChar(64)
+  creditScore      Int              @default(100) @map("credit_score")
+  creditLevel      String           @default("normal") @map("credit_level") @db.VarChar(32)
+  controlStatus    String           @default("normal") @map("control_status") @db.VarChar(16)
+  consecutiveKeep  Int              @default(0) @map("consecutive_keep")
+  lastRecoverAt    DateTime?        @map("last_recover_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  creditLogs       CreditLog[]
+  blacklists       BlacklistRecord[]
+  appeals          CreditAppeal[]
+  notifications    CreditNotification[]
+
+  @@index([creditScore])
+  @@index([controlStatus])
+  @@map("credit_accounts")
+}
+
+model CreditLog {
+  id             Int        @id @default(autoincrement())
+  accountId      Int        @map("account_id")
+  reservationId  Int?       @map("reservation_id")
+  changeType     String     @map("change_type") @db.VarChar(32)
+  delta          Int        @default(0)
+  beforeScore    Int        @map("before_score")
+  afterScore     Int        @map("after_score")
+  reason         String     @default("") @db.VarChar(255)
+  ruleCode       String?    @map("rule_code") @db.VarChar(64)
+  operatorId     Int?       @map("operator_id")
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  account        CreditAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reservation    Reservation?  @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([changeType])
+  @@index([createdAt])
+  @@map("credit_logs")
+}
+
+model CreditRule {
+  id           Int      @id @default(autoincrement())
+  code         String   @unique @db.VarChar(64)
+  name         String   @db.VarChar(128)
+  description  String   @default("") @db.VarChar(512)
+  eventType    String   @map("event_type") @db.VarChar(32)
+  enabled      Boolean  @default(true)
+  priority     Int      @default(0)
+  conditions   String   @db.VarChar(1024)
+  actionDelta  Int      @default(0) @map("action_delta")
+  actionExtra  String   @db.VarChar(1024) @map("action_extra")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([eventType])
+  @@map("credit_rules")
+}
+
+model CreditTier {
+  id                   Int      @id @default(autoincrement())
+  name                 String   @unique @db.VarChar(64)
+  displayName          String   @map("display_name") @db.VarChar(64)
+  minScore             Int      @default(0) @map("min_score")
+  maxScore             Int      @default(100) @map("max_score")
+  controlStatus        String   @default("normal") @map("control_status") @db.VarChar(16)
+  requireAdvanceHours  Int      @default(0) @map("require_advance_hours")
+  maxDailyReservations Int      @default(5) @map("max_daily_reservations")
+  allowPeakTime        Boolean  @default(true) @map("allow_peak_time")
+  maxGroupSize         Int      @default(10) @map("max_group_size")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@index([minScore, maxScore])
+  @@map("credit_tiers")
+}
+
+model BlacklistRecord {
+  id           Int        @id @default(autoincrement())
+  accountId    Int        @map("account_id")
+  reason       String     @db.VarChar(255)
+  startAt      DateTime   @map("start_at")
+  endAt        DateTime   @map("end_at")
+  status       String     @default("active") @db.VarChar(16)
+  releasedAt   DateTime?  @map("released_at")
+  releaseType  String?    @map("release_type") @db.VarChar(16)
+  releaseNote  String?    @map("release_note") @db.VarChar(255)
+  operatorId   Int?       @map("operator_id")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  account      CreditAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([status])
+  @@index([endAt])
+  @@map("blacklist_records")
+}
+
+model CreditAppeal {
+  id             Int          @id @default(autoincrement())
+  accountId      Int          @map("account_id")
+  reservationId  Int?         @map("reservation_id")
+  reason         String       @db.VarChar(512)
+  evidence       String       @db.VarChar(2048)
+  status         String       @default("pending") @db.VarChar(16)
+  reviewNote     String?      @map("review_note") @db.VarChar(512)
+  reviewerId     Int?         @map("reviewer_id")
+  reviewedAt     DateTime?    @map("reviewed_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  account        CreditAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  reservation    Reservation?  @relation("ReservationAppeals", fields: [reservationId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+  @@index([status])
+  @@index([reservationId])
+  @@map("credit_appeals")
+}
+
+model NoShowBatch {
+  id             Int        @id @default(autoincrement())
+  visitDate      String     @map("visit_date") @db.VarChar(10)
+  timeSlot       String     @map("time_slot") @db.VarChar(16)
+  totalCount     Int        @default(0) @map("total_count")
+  processedCount Int        @default(0) @map("processed_count")
+  triggeredBy    String     @default("system") @map("triggered_by") @db.VarChar(16)
+  operatorId     Int?       @map("operator_id")
+  status         String     @default("pending") @db.VarChar(16)
+  createdAt      DateTime   @default(now()) @map("created_at")
+  finishedAt     DateTime?  @map("finished_at")
+
+  reservations   Reservation[]
+
+  @@index([visitDate, timeSlot])
+  @@index([status])
+  @@map("no_show_batches")
+}
+
+model CreditNotification {
+  id         Int      @id @default(autoincrement())
+  accountId  Int      @map("account_id")
+  type       String   @db.VarChar(32)
+  title      String   @db.VarChar(128)
+  content    String   @db.VarChar(2048)
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  account    CreditAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([readAt])
+  @@map("credit_notifications")
 }

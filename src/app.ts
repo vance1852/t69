@@ -4,6 +4,7 @@ import authRouter from "./routes/auth";
 import museumRouter from "./routes/museums";
 import reservationRouter from "./routes/reservations";
 import dashboardRouter from "./routes/dashboard";
+import creditRouter from "./routes/credit";
 
 export function createApp() {
   const app = express();
@@ -17,6 +18,7 @@ export function createApp() {
   app.use("/api/museums", museumRouter);
   app.use("/api/reservations", reservationRouter);
   app.use("/api/dashboard", dashboardRouter);
+  app.use("/api/credit", creditRouter);
 
   return app;
 }
